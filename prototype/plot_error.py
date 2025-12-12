@@ -202,7 +202,7 @@ def plot_error(agg: pd.DataFrame, output_png: Path) -> None:
     bottom_linear_ax.legend(loc="best", frameon=False)
     bottom_log_ax.legend(loc="best", frameon=False)
 
-    fig.suptitle("Prototype — Estimation Error: methods and CPU vs OpenMP threads", y=0.98)
+    fig.suptitle("Prototype — Estimation Error", y=0.98)
     fig.tight_layout(rect=(0, 0, 1, 0.96))
     fig.savefig(output_png, dpi=200)
 

@@ -202,7 +202,7 @@ def plot_latency(agg: pd.DataFrame, output_png: Path) -> None:
     bottom_linear_ax.legend(loc="best", frameon=False)
     bottom_log_ax.legend(loc="best", frameon=False)
 
-    fig.suptitle("Prototype — Latency: methods and CPU vs OpenMP threads", y=0.98)
+    fig.suptitle("Prototype — Latency", y=0.98)
     fig.tight_layout(rect=(0, 0, 1, 0.96))
     fig.savefig(output_png, dpi=200)
 
