@@ -54,10 +54,10 @@ bool intersectsSquareB(double Ax, double Ay, double Az,
 
 // --- Version CPU Séquentielle (Inchangée) ---
 
-double estimateViewFactor_Seq(long long N, double L, double d, mt19937 &gen)
+double estimateViewFactor_Seq(int N, double L, double d, mt19937 &gen)
 {
     int hits = 0;
-    for (long long i = 0; i < N; i++)
+    for (int i = 0; i < N; i++)
     {
         double Ax, Ay, dx, dy, dz;
         randomPointOnSquare(L, Ax, Ay, gen);
@@ -70,15 +70,15 @@ double estimateViewFactor_Seq(long long N, double L, double d, mt19937 &gen)
 
 //  Version CPU Parallélisée avec OpenMP
 
-double estimateViewFactor_OMP(long long N, double L, double d)
+double estimateViewFactor_OMP(int N, double L, double d)
 {
-    long long hits = 0;
+    int hits = 0;
 
 #pragma omp parallel reduction(+ : hits)
     {
         mt19937 gen(42 + omp_get_thread_num());
 #pragma omp for
-        for (long long i = 0; i < N; i++)
+        for (int i = 0; i < N; i++)
         {
             double Ax, Ay, dx, dy, dz;
             randomPointOnSquare(L, Ax, Ay, gen);
@@ -103,7 +103,7 @@ double estimateViewFactor_OMP(long long N, double L, double d)
         }                                                          \
     }
 
-__global__ void init_rng_states(curandState *state, long long N)
+__global__ void init_rng_states(curandState *state, int N)
 {
     int id = blockIdx.x * blockDim.x + threadIdx.x;
     if (id < N)
@@ -112,7 +112,7 @@ __global__ void init_rng_states(curandState *state, long long N)
     }
 }
 
-__global__ void vf_kernel(long long N, double L, double d, int *d_hits_out, curandState *rng_states)
+__global__ void vf_kernel(int N, double L, double d, int *d_hits_out, curandState *rng_states)
 {
     int id = blockIdx.x * blockDim.x + threadIdx.x;
     if (id >= N)
@@ -164,7 +164,7 @@ __global__ void vf_kernel(long long N, double L, double d, int *d_hits_out, cura
 }
 
 // Run the CUDA kernel once and return the estimated view factor (host-timed caller will measure latency)
-double run_cuda_once(long long N, double L, double d, curandState *d_rng_states, int *d_counter, int THREADS_PER_BLOCK)
+double run_cuda_once(int N, double L, double d, curandState *d_rng_states, int *d_counter, int THREADS_PER_BLOCK)
 {
     int BLOCKS = (int)((N + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK);
     CUDA_CHECK(cudaMemset(d_counter, 0, sizeof(int)));
@@ -177,7 +177,7 @@ double run_cuda_once(long long N, double L, double d, curandState *d_rng_states,
 }
 
 // --- Fonction Hôte (Orchestration CUDA) ---
-double estimateViewFactor_CUDA(long long N, double L, double d,
+double estimateViewFactor_CUDA(int N, double L, double d,
                                curandState *d_rng_states, int *d_counter,
                                int THREADS_PER_BLOCK, float &kernel_ms)
 {
@@ -219,12 +219,15 @@ int main()
     // ----------------------------
     double L = 1.0; // taille de la plaque
     double d = 2.0; // séparation demandée
-    vector<long long> N_values = {
-        1'000LL,
-        10'000LL,
-        100'000LL,
-        1'000'000LL,
-        10'000'000LL};
+    vector<int> N_values = {
+        1'000,        // ~1k operations
+        10'000,       // ~10k operations
+        100'000,      // ~100k operations
+        1'000'000,    // ~1M operations
+        10'000'000,   // ~10M operations
+        100'000'000,  // ~100M operations
+        // 1'000'000'000 // ~1B operations
+    };
 
     // ----------------------------
     // Générateur CPU pour séquentiel
@@ -234,8 +237,8 @@ int main()
     // ----------------------------
     // Préparer et allouer les ressources CUDA une seule fois
     // ----------------------------
-    long long max_N = 0;
-    for (long long v : N_values)
+    int max_N = 0;
+    for (int v : N_values)
         if (v > max_N)
             max_N = v;
 
@@ -275,7 +278,7 @@ int main()
             break;
     }
 
-    for (long long N : N_values)
+    for (int N : N_values)
     {
         cout << "\n============ N = " << N << " ============\n";
 
@@ -294,11 +297,14 @@ int main()
         std::vector<double> seq_estimates;
         std::vector<double> seq_errors;
         double total_time = 0.0;
-        while (total_time < min_duration_ms)
+        int iterations = 0;
+        const int max_iterations = 1000;
+        while (total_time < min_duration_ms && iterations < max_iterations)
         {
             auto s = chrono::high_resolution_clock::now();
             double F_seq = estimateViewFactor_Seq(N, L, d, gen);
             auto e = chrono::high_resolution_clock::now();
+            iterations++;
             double latency = chrono::duration<double, std::milli>(e - s).count();
             double err = fabs(F_seq - F_ref);
             seq_measurements.push_back(latency);
@@ -329,11 +335,13 @@ int main()
             std::vector<double> omp_estimates;
             std::vector<double> omp_errors;
             total_time = 0.0;
-            while (total_time < min_duration_ms)
+            iterations = 0;
+            while (total_time < min_duration_ms && iterations < max_iterations)
             {
                 auto s = chrono::high_resolution_clock::now();
                 double F_omp = estimateViewFactor_OMP(N, L, d);
                 auto e = chrono::high_resolution_clock::now();
+                iterations++;
                 double latency = chrono::duration<double, std::milli>(e - s).count();
                 double err = fabs(F_omp - F_ref);
                 omp_measurements.push_back(latency);
@@ -361,11 +369,13 @@ int main()
         std::vector<double> cuda_estimates;
         std::vector<double> cuda_errors;
         total_time = 0.0;
-        while (total_time < min_duration_ms)
+        iterations = 0;
+        while (total_time < min_duration_ms && iterations < max_iterations)
         {
             auto s = chrono::high_resolution_clock::now();
             double F_cuda = run_cuda_once(N, L, d, d_rng_states, d_counter, THREADS_PER_BLOCK);
             auto e = chrono::high_resolution_clock::now();
+            iterations++;
             double latency = chrono::duration<double, std::milli>(e - s).count();
             double err = fabs(F_cuda - F_ref);
             cuda_measurements.push_back(latency);
