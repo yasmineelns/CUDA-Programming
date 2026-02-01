@@ -298,7 +298,7 @@ int main()
         std::vector<double> seq_errors;
         double total_time = 0.0;
         int iterations = 0;
-        const int max_iterations = 1000;
+        const int max_iterations = 5000;
         while (total_time < min_duration_ms && iterations < max_iterations)
         {
             auto s = chrono::high_resolution_clock::now();
